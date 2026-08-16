@@ -2,6 +2,7 @@ package com.payflow.payflow.service;
 
 import com.payflow.payflow.dto.LoginResponse;
 import com.payflow.payflow.entity.User;
+import com.payflow.payflow.exception.InvalidCredentialsException;
 import com.payflow.payflow.repository.UserRepository;
 import com.payflow.payflow.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,10 +27,10 @@ public class AuthService {
 
     public LoginResponse login(String email, String rawPassword) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Incorrect email or password"));
+                .orElseThrow(InvalidCredentialsException::new);
 
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
-            throw new RuntimeException("Incorrect email or password");
+            throw new InvalidCredentialsException();
         }
 
         String token = jwtService.generateToken(user.getId());
