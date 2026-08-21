@@ -1,5 +1,6 @@
 package com.payflow.payflow.security;   // or wherever you keep security bits
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,21 +23,13 @@ public class JwtService {
     public JwtService(
             @Value("${payflow.jwt.secret}") String secret,
             @Value("${payflow.jwt.expiration-ms}") long expirationMs) {
-        // TODO: base64-decode `secret` -> byte[]
-        // TODO: Keys.hmacShaKeyFor(bytes) -> assign to this.signingKey
-        // TODO: assign this.expirationMs
+
         this.signingKey = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secret));
         this.expirationMs = expirationMs;
     }
 
     public String generateToken(UUID userId) {
-        // TODO: compute now and expiry (Date objects from System.currentTimeMillis())
-        // TODO: Jwts.builder()
-        //          .subject(userId.toString())   // sub claim
-        //          .issuedAt(now)                 // iat
-        //          .expiration(expiry)            // exp
-        //          .signWith(signingKey)          // HMAC-SHA256
-        //          .compact();                    // -> the aaa.bbb.ccc string
+
         Instant now = Instant.now();
         Instant expiry = now.plusMillis(expirationMs);
 
@@ -45,5 +38,18 @@ public class JwtService {
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
                 .signWith(signingKey)
-                .compact();    }
+                .compact();
+    }
+
+    public UUID validateAndExtractUserId(String token) {
+
+        Claims claims = Jwts.parser()
+                .verifyWith(signingKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        String subject = claims.getSubject();
+        return UUID.fromString(subject);
+    }
 }
