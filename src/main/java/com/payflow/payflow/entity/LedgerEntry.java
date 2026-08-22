@@ -28,13 +28,13 @@ public class LedgerEntry {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public LedgerEntry(UUID id, UUID transactionId, UUID walletId, EntryType entryType, BigDecimal amount, Instant createdAt) {
+    public LedgerEntry(UUID id, UUID transactionId, UUID walletId, EntryType entryType, BigDecimal amount) {
         this.id = id;
         this.transactionId = transactionId;
         this.walletId = walletId;
         this.entryType = entryType;
         this.amount = amount;
-        this.createdAt = createdAt;
+        this.createdAt = Instant.now();
     }
 
     protected LedgerEntry(){

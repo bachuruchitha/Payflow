@@ -32,10 +32,12 @@ public class WalletService {
     @Transactional
     public Wallet topUp(UUID userId, BigDecimal amount) {
         Wallet wallet = walletRepository.findByUserId(userId).orElseThrow(WalletNotFoundException::new);
-        LedgerEntry ledgerEntry = new LedgerEntry(UUID.randomUUID(), null, wallet.getId(), EntryType.CREDIT, amount, Instant.now());
+        LedgerEntry ledgerEntry = new LedgerEntry(UUID.randomUUID(), null, wallet.getId(), EntryType.CREDIT, amount);
         ledgerEntryRepository.save(ledgerEntry);
         BigDecimal currentBalance = wallet.getBalance();
         BigDecimal newBalance = currentBalance.add(amount);
+
+
         wallet.setBalance(newBalance);
 
         return wallet;
