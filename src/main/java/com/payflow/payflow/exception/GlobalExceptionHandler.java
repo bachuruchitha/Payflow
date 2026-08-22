@@ -27,4 +27,18 @@ public class GlobalExceptionHandler {
         ErrorResponse errorResponse = new ErrorResponse("INVALID_DATA", "Validation failed");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
+
+    @ExceptionHandler(WalletNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handle(WalletNotFoundException ex) {
+        ErrorResponse errorResponse = new ErrorResponse("WALLET_NOT_FOUND", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+    }
+
+    // The catch-all: last line of defense
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handle(Exception ex) {
+        ErrorResponse errorResponse = new ErrorResponse("INTERNAL_ERROR", "An unexpected error occurred");
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+
+    }
 }

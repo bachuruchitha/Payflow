@@ -3,6 +3,7 @@ package com.payflow.payflow.service;
 import com.payflow.payflow.entity.EntryType;
 import com.payflow.payflow.entity.LedgerEntry;
 import com.payflow.payflow.entity.Wallet;
+import com.payflow.payflow.exception.WalletNotFoundException;
 import com.payflow.payflow.repository.LedgerEntryRepository;
 import com.payflow.payflow.repository.WalletRepository;
 import org.springframework.stereotype.Service;
@@ -25,12 +26,12 @@ public class WalletService {
     }
 
     public Wallet getWallet(UUID userId){
-        return walletRepository.findByUserId(userId).orElseThrow(() -> new IllegalStateException("Wallet not found"));
+        return walletRepository.findByUserId(userId).orElseThrow(WalletNotFoundException::new);
     }
 
     @Transactional
     public Wallet topUp(UUID userId, BigDecimal amount) {
-        Wallet wallet = walletRepository.findByUserId(userId).orElseThrow(() -> new IllegalStateException("Wallet not found"));
+        Wallet wallet = walletRepository.findByUserId(userId).orElseThrow(WalletNotFoundException::new);
         LedgerEntry ledgerEntry = new LedgerEntry(UUID.randomUUID(), null, wallet.getId(), EntryType.CREDIT, amount, Instant.now());
         ledgerEntryRepository.save(ledgerEntry);
         BigDecimal currentBalance = wallet.getBalance();

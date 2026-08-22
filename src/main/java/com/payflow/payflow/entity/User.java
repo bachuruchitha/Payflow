@@ -32,6 +32,7 @@ public class User {
         this.id = id;
         this.email = email;
         this.passwordHash = passwordHash;
+        this.createdAt = Instant.now();
     }
 
     public String getPasswordHash() {

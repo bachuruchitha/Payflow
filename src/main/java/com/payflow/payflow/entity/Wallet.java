@@ -20,6 +20,7 @@ public class Wallet {
     @Column(name = "currency", nullable = false)
     private String currency;
 
+    @Version
     @Column(name = "version", nullable = false)
     private Integer version;
 
@@ -39,6 +40,8 @@ public class Wallet {
         this.id = id;
         this.userId = userId;
         this.currency = currency;
+        this.createdAt = Instant.now();
+        this.balance = BigDecimal.ZERO;
     }
 
     public UUID getId() {
