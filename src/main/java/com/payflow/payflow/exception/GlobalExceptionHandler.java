@@ -1,6 +1,7 @@
 package com.payflow.payflow.exception;
 
 import com.payflow.payflow.dto.ErrorResponse;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -32,6 +33,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handle(WalletNotFoundException ex) {
         ErrorResponse errorResponse = new ErrorResponse("WALLET_NOT_FOUND", ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handle(DataIntegrityViolationException ex) {
+        ErrorResponse errorResponse = new ErrorResponse("DATA_VIOLATION", "Data violation");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
     }
 
     // The catch-all: last line of defense
