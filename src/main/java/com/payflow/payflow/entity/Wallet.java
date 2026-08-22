@@ -2,6 +2,7 @@ package com.payflow.payflow.entity;
 
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -22,8 +23,13 @@ public class Wallet {
     @Column(name = "version", nullable = false)
     private Integer version;
 
+    @Column(name = "balance", nullable = false)
+    private BigDecimal balance;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+
 
     protected Wallet() {
     }
@@ -54,5 +60,15 @@ public class Wallet {
     public Instant getCreatedAt() {
         return createdAt;
     }
+
+
+    public BigDecimal getBalance() {
+        return balance;
+    }
+
+    public void setBalance(BigDecimal balance) {
+        this.balance = balance;
+    }
+
 
 }

@@ -21,7 +21,9 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests((auth ->
-                        auth.requestMatchers("/health", "/api/users/register", "/api/auth/login")
+                        auth.requestMatchers("/health", "/api/users/register", "/api/auth/login", "/swagger-ui/**",
+                                        "/swagger-ui.html",
+                                        "/v3/api-docs/**")
                                 .permitAll().anyRequest().authenticated()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
