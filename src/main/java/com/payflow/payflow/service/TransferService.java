@@ -44,10 +44,9 @@ public class TransferService {
         UUID senderWalletId = senderWallet.getId();
 
         // STEP 2: create transactions row, starting PENDING
-        Transaction transaction = new Transaction(
+        Transaction transaction = transactionRepository.save(new Transaction(
                 UUID.randomUUID(), senderWalletId, receiverWalletId,
-                transferAmount, TransactionStatus.PENDING);
-        transactionRepository.save(transaction);
+                transferAmount, TransactionStatus.PENDING));
 
         // STEP 3: write DEBIT + CREDIT ledger entries (the source of truth)
         LedgerEntry debit = new LedgerEntry(

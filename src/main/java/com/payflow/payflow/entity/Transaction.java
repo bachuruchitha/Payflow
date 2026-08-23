@@ -12,6 +12,7 @@ import java.util.UUID;
 public class Transaction {
 
     @Id
+    @Column(name = "id")
     UUID transactionId;
 
     @Column(name = "from_wallet_id", nullable = false)
