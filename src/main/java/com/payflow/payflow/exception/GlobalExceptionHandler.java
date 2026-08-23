@@ -47,6 +47,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
     }
 
+    @ExceptionHandler(SelfTransferNotAllowedException.class)
+    public ResponseEntity<ErrorResponse> handle(SelfTransferNotAllowedException ex){
+        ErrorResponse errorResponse=new ErrorResponse("SELF_TRANSFER_NOT_ALLOWED", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
     // The catch-all: last line of defense
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handle(Exception ex) {

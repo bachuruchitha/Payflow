@@ -76,6 +76,10 @@ public class Transaction {
         return transactionId;
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     public void markCompleted() {
         this.status = TransactionStatus.COMPLETED;
         this.completedAt = Instant.now();
