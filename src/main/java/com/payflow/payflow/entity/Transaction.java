@@ -3,11 +3,12 @@ package com.payflow.payflow.entity;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
 
 @Entity
-@Table(name = "transaction")
+@Table(name = "transactions")
 public class Transaction {
 
     @Id
@@ -22,10 +23,32 @@ public class Transaction {
     @Column(name = "amount", nullable = false)
     BigDecimal amount;
 
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
+
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     TransactionStatus status;
+
+
+    public Transaction(UUID transactionId, UUID fromWalletId, UUID toWalletId,
+                       BigDecimal amount, TransactionStatus status) {
+        this.transactionId = transactionId;
+        this.fromWalletId = fromWalletId;
+        this.toWalletId = toWalletId;
+        this.amount = amount;
+        this.status = status;
+        this.createdAt = Instant.now();
+    }
+
+
+    protected Transaction() {
+    }
 
 
     public void setStatus(TransactionStatus transactionStatus) {
@@ -52,14 +75,10 @@ public class Transaction {
         return transactionId;
     }
 
-    public Transaction(UUID transactionId, UUID fromWalletId, UUID toWalletId,
-                       BigDecimal amount, TransactionStatus status) {
-        this.transactionId = transactionId;
-        this.fromWalletId = fromWalletId;
-        this.toWalletId = toWalletId;
-        this.amount = amount;
-        this.status = status;
+    public void markCompleted() {
+        this.status = TransactionStatus.COMPLETED;
+        this.completedAt = Instant.now();
     }
 
-    protected Transaction() { }
+
 }

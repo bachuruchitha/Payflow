@@ -65,7 +65,7 @@ public class TransferService {
 
 
         // STEP 5: mark COMPLETED
-        transaction.setStatus(TransactionStatus.COMPLETED);           // dirty-checked, flushes at commit
+        transaction.markCompleted();           // dirty-checked, flushes at commit
 
 
         return new TransferResponse(
