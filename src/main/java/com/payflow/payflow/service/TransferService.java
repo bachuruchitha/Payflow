@@ -10,75 +10,58 @@ import com.payflow.payflow.exception.WalletNotFoundException;
 import com.payflow.payflow.repository.LedgerEntryRepository;
 import com.payflow.payflow.repository.TransactionRepository;
 import com.payflow.payflow.repository.WalletRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 @Service
 public class TransferService {
 
     private final WalletRepository walletRepository;
-    private final LedgerEntryRepository ledgerEntryRepository;
     private final TransactionRepository transactionRepository;
+    private final TransferExecutor transferExecutor;
+    private final OptimisticTransferService optimisticTransferService;
 
     public TransferService(WalletRepository walletRepository,
-                           LedgerEntryRepository ledgerEntryRepository,
-                           TransactionRepository transactionRepository) {
+                           TransactionRepository transactionRepository, TransferExecutor transferExecutor,
+                           OptimisticTransferService optimisticTransferService) {
         this.walletRepository = walletRepository;
-        this.ledgerEntryRepository = ledgerEntryRepository;
         this.transactionRepository = transactionRepository;
+        this.transferExecutor = transferExecutor;
+        this.optimisticTransferService = optimisticTransferService;
     }
 
-    @Transactional
-    public TransferResponse transfer(UUID senderId, UUID receiverWalletId, BigDecimal transferAmount) {
-        // STEP 1: validate balance (inside the txn)
-        Wallet senderWallet = walletRepository.findByUserId(senderId)
-                .orElseThrow(WalletNotFoundException::new);
-        Wallet receiverWallet = walletRepository.findById(receiverWalletId)
-                .orElseThrow(WalletNotFoundException::new);
+    public TransferResponse transfer(String idempotencyKey, UUID senderId, UUID receiverWalletId, BigDecimal transferAmount) {
+        return withIdempotency(idempotencyKey,
+                () -> transferExecutor.executeTransfer(idempotencyKey, senderId, receiverWalletId, transferAmount));
+    }
 
-        if (senderWallet.getId().equals(receiverWalletId)) {
-            throw new SelfTransferNotAllowedException();
+    // Idempotency sits OUTSIDE the retry loop: a duplicate key is replayed once here,
+    // never retried inside OptimisticTransferService.
+    public TransferResponse transferOptimistic(String idempotencyKey, UUID senderId, UUID receiverWalletId, BigDecimal amount) {
+        return withIdempotency(idempotencyKey,
+                () -> optimisticTransferService.transfer(idempotencyKey, senderId, receiverWalletId, amount));
+    }
+
+    private TransferResponse withIdempotency(String idempotencyKey, Supplier<TransferResponse> execute) {
+        Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(idempotencyKey);
+        if (existing.isPresent()) {
+            return toResponse(existing.get());
         }
-
-        BigDecimal currentBalance = senderWallet.getBalance();
-        if (currentBalance.compareTo(transferAmount) < 0) {
-            throw new InsufficientBalanceException();
+        try {
+            return execute.get();
+        } catch (DataIntegrityViolationException e) {
+            return toResponse(transactionRepository
+                    .findByIdempotencyKey(idempotencyKey)
+                    .orElseThrow(() -> new IllegalStateException("Idempotency key conflict but no committed transaction found: " + idempotencyKey)));
         }
-        UUID senderWalletId = senderWallet.getId();
-
-        // STEP 2: create transactions row, starting PENDING
-        Transaction transaction = transactionRepository.save(new Transaction(
-                UUID.randomUUID(), senderWalletId, receiverWalletId,
-                transferAmount, TransactionStatus.PENDING));
-
-        // STEP 3: write DEBIT + CREDIT ledger entries (the source of truth)
-        LedgerEntry debit = new LedgerEntry(
-                UUID.randomUUID(), transaction.getTransactionId(),
-                senderWalletId, EntryType.DEBIT, transferAmount);
-        LedgerEntry credit = new LedgerEntry(
-                UUID.randomUUID(), transaction.getTransactionId(),
-                receiverWalletId, EntryType.CREDIT, transferAmount);
-        ledgerEntryRepository.save(debit);
-        ledgerEntryRepository.save(credit);
-
-        // STEP 4: update BOTH balances, derived from the entries   // FIX (Bug 1): was missing entirely
-        senderWallet.setBalance(currentBalance.subtract(transferAmount));
-        receiverWallet.setBalance(receiverWallet.getBalance().add(transferAmount));
-
-
-        // STEP 5: mark COMPLETED
-        transaction.markCompleted();           // dirty-checked, flushes at commit
-
-
-        return new TransferResponse(
-                transaction.getTransactionId(),
-                TransactionStatus.COMPLETED,
-                transferAmount);
     }
 
     public Page<TransactionHistoryResponse> getTransactions(UUID userId, Pageable pageable) {
@@ -87,7 +70,6 @@ public class TransferService {
         return transactions.map(transaction -> mapToDto(transaction, myWalletId));
     }
 
-    @Transactional(readOnly = true)
     private TransactionHistoryResponse mapToDto(Transaction transaction, UUID myWalletId) {
         UUID counterPartyWalletId = transaction.getFromWalletId();
         Direction direction = Direction.INCOMING;
@@ -100,4 +82,13 @@ public class TransferService {
                 transaction.getAmount(), transaction.getStatus(),
                 transaction.getCreatedAt());
     }
+
+    private TransferResponse toResponse(Transaction transaction) {
+        return new TransferResponse(
+                transaction.getTransactionId(),
+                transaction.getStatus(),
+                transaction.getAmount());
+    }
+
+
 }

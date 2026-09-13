@@ -36,14 +36,17 @@ public class Transaction {
     @Column(name = "status", nullable = false)
     TransactionStatus status;
 
+    @Column(name = "idempotency_key", nullable = false, unique = true)
+    private String idempotencyKey;
 
     public Transaction(UUID transactionId, UUID fromWalletId, UUID toWalletId,
-                       BigDecimal amount, TransactionStatus status) {
+                       BigDecimal amount, TransactionStatus status, String idempotencyKey) {
         this.transactionId = transactionId;
         this.fromWalletId = fromWalletId;
         this.toWalletId = toWalletId;
         this.amount = amount;
         this.status = status;
+        this.idempotencyKey = idempotencyKey;
         this.createdAt = Instant.now();
     }
 

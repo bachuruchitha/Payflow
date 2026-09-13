@@ -1,5 +1,4 @@
 ALTER TABLE wallets ADD COLUMN balance NUMERIC(19,4) NOT NULL DEFAULT 0;
-
 CREATE TABLE ledger_entries (
    id UUID   PRIMARY KEY,
    transaction_id UUID,

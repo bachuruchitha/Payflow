@@ -53,6 +53,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
 
+    @ExceptionHandler(TransferConflictException.class)
+    public ResponseEntity<ErrorResponse> handle(TransferConflictException ex){
+        ErrorResponse errorResponse=new ErrorResponse("TRANSFER_CONFLICT", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+    }
+
     // The catch-all: last line of defense
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handle(Exception ex) {
