@@ -1,6 +1,6 @@
 package com.payflow.payflow.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.payflow.payflow.dto.TransferEventPayload;
 import com.payflow.payflow.entity.Notification;
 import com.payflow.payflow.entity.ProcessedEvent;

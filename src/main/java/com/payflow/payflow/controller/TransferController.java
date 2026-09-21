@@ -39,7 +39,10 @@ public class TransferController {
             throw new TooManyRequestsException(rateLimiter.retryAfterSeconds(rateLimit));
         }
 
-        TransferResponse transferResponse=transferService.transfer(idempotencyKey, senderId,request.toWalletId(),request.amount());
+        // The optimistic path, not the pessimistic one: it is the only executor that writes
+        // the OutboxEvent, so this is what gets a transfer onto Kafka and into a Notification.
+        // Idempotency replay still sits outside the retry loop, in TransferService.
+        TransferResponse transferResponse=transferService.transferOptimistic(idempotencyKey, senderId,request.toWalletId(),request.amount());
         return ResponseEntity.ok(transferResponse);
     }
 
