@@ -1,4 +1,22 @@
 spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # Fail-open is only fail-open if it fails FAST. Lettuce's default command timeout is
+      # 60s, so a Redis that accepts connections but stops answering -- a failover, packet
+      # loss, an overloaded node -- would hang every transfer for a minute before the rate
+      # limiter gave up and allowed it. That turns "the limiter is down" into "payments are
+      # down", which is exactly what the fail-open policy exists to prevent.
+      #
+      # 1s, not the 250ms tried first: the command timeout ALSO bounds Lettuce's connection
+      # handshake (HELLO/CLIENT SETINFO), and 250ms was tight enough that a cold connection
+      # to a HEALTHY local Redis timed out. Under a fail-open policy that failure mode is
+      # invisible -- the limiter just stops limiting -- so the timeout has to sit well clear
+      # of normal handshake latency. Steady-state EVALSHA is sub-millisecond; this ceiling
+      # only bites on a genuinely sick server.
+      timeout: 1s           # command timeout, and the handshake bound
+      connect-timeout: 1s   # how long to wait for the socket
   datasource:
     url: jdbc:postgresql://localhost:5432/payflow
     username: payflow
@@ -16,3 +34,6 @@ payflow:
   jwt:
     secret: ${JWT_SECRET:ixpXEOCgCwxfMw1JaF1zp13ILi34kbA/P2RBWnifH/s=}
     expiration-ms: 3600000   # 1 hour, in milliseconds
+  ratelimit:
+    capacity: 10                        # burst: tokens a full bucket holds
+    refill-per-second: 0.16666666667    # 10 per minute, the sustained rate

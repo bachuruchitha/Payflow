@@ -1,0 +1,7 @@
+CREATE TABLE outbox_events (
+id UUID PRIMARY KEY,
+is_published BOOLEAN NOT NULL DEFAULT FALSE,
+payload TEXT NOT NULL,
+transaction_id UUID NOT NULL,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)

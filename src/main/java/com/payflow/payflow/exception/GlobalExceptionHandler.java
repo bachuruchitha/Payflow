@@ -2,6 +2,7 @@ package com.payflow.payflow.exception;
 
 import com.payflow.payflow.dto.ErrorResponse;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -57,6 +58,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handle(TransferConflictException ex){
         ErrorResponse errorResponse=new ErrorResponse("TRANSFER_CONFLICT", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+    }
+
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ErrorResponse> handle(TooManyRequestsException ex){
+        ErrorResponse errorResponse=new ErrorResponse("RATE_LIMIT_EXCEEDED", ex.getMessage());
+        // Retry-After is the whole point of a 429 -- without it the client has to guess,
+        // and guessing wrong is what turns throttling into a retry storm.
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+                .body(errorResponse);
     }
 
     // The catch-all: last line of defense

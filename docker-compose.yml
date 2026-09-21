@@ -12,5 +12,31 @@ services:
       - "5432:5432"
     volumes:
       - payflow_pgdata:/var/lib/postgresql/data
+  redis:
+    image: redis:7.4
+    container_name: payflow-redis
+    ports:
+      - "6379:6379"
+  kafka:
+    image: apache/kafka:3.8.0        # official Kafka image, KRaft-capable
+    container_name: payflow-kafka
+    ports:
+      - "9092:9092"                  # host:container — lets your laptop reach the broker
+    environment:
+      # --- KRaft mode (no ZooKeeper): this broker is also the controller ---
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+
+      # --- Listeners: the "doors" into the broker ---
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+
+      # --- Single-broker settings (fine for local dev, NOT production) ---
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 volumes:
   payflow_pgdata:

@@ -3,6 +3,9 @@ package com.payflow.payflow.controller;
 import com.payflow.payflow.dto.TransactionHistoryResponse;
 import com.payflow.payflow.dto.TransferRequest;
 import com.payflow.payflow.dto.TransferResponse;
+import com.payflow.payflow.exception.TooManyRequestsException;
+import com.payflow.payflow.service.RateLimitResult;
+import com.payflow.payflow.service.RateLimiter;
 import com.payflow.payflow.service.TransferService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -18,12 +21,24 @@ public class TransferController {
 
     private final TransferService transferService;
 
-    public TransferController(TransferService transferService) {
+    private final RateLimiter rateLimiter;
+
+    public TransferController(TransferService transferService, RateLimiter rateLimiter) {
         this.transferService = transferService;
+        this.rateLimiter = rateLimiter;
     }
 
     @PostMapping("/api/transfers")
     ResponseEntity<TransferResponse> transfer(@RequestHeader("Idempotency-Key") String idempotencyKey, @AuthenticationPrincipal UUID senderId, @Valid @RequestBody TransferRequest request){
+        // First thing in the request, before any transfer logic: an over-limit caller must
+        // be turned away without opening a transaction or taking a row lock. The bucket is
+        // keyed on the authenticated principal, never on anything in the body -- a caller
+        // who could name their own bucket could simply pick a fresh one per request.
+        RateLimitResult rateLimit = rateLimiter.check(senderId.toString());
+        if (!rateLimit.allowed()) {
+            throw new TooManyRequestsException(rateLimiter.retryAfterSeconds(rateLimit));
+        }
+
         TransferResponse transferResponse=transferService.transfer(idempotencyKey, senderId,request.toWalletId(),request.amount());
         return ResponseEntity.ok(transferResponse);
     }

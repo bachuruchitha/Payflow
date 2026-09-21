@@ -1,0 +1,1 @@
+CREATE INDEX idx_ledger_entries_wallet_id ON ledger_entries (wallet_id);

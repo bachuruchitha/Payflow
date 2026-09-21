@@ -1,11 +1,15 @@
 package com.payflow.payflow.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.payflow.payflow.dto.TransferEventPayload;
 import com.payflow.payflow.dto.TransferResponse;
 import com.payflow.payflow.entity.*;
 import com.payflow.payflow.exception.InsufficientBalanceException;
 import com.payflow.payflow.exception.SelfTransferNotAllowedException;
 import com.payflow.payflow.exception.WalletNotFoundException;
 import com.payflow.payflow.repository.LedgerEntryRepository;
+import com.payflow.payflow.repository.OutboxEventRepository;
 import com.payflow.payflow.repository.TransactionRepository;
 import com.payflow.payflow.repository.WalletRepository;
 import org.springframework.stereotype.Service;
@@ -34,11 +38,17 @@ public class OptimisticTransferExecutor {
     private final WalletRepository walletRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final TransactionRepository transactionRepository;
+    private final BalanceCache balanceCache;
+    private final ObjectMapper objectMapper;
+    private final OutboxEventRepository outboxEventRepository;
 
-    public OptimisticTransferExecutor(WalletRepository walletRepository, LedgerEntryRepository ledgerEntryRepository, TransactionRepository transactionRepository) {
+    public OptimisticTransferExecutor(WalletRepository walletRepository, LedgerEntryRepository ledgerEntryRepository, TransactionRepository transactionRepository, BalanceCache balanceCache, ObjectMapper objectMapper, OutboxEventRepository outboxEventRepository) {
         this.walletRepository = walletRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.transactionRepository = transactionRepository;
+        this.balanceCache = balanceCache;
+        this.objectMapper = objectMapper;
+        this.outboxEventRepository = outboxEventRepository;
     }
 
     @Transactional
@@ -97,6 +107,21 @@ public class OptimisticTransferExecutor {
 
         // STEP 5: mark COMPLETED
         transaction.markCompleted();           // dirty-checked, flushes at commit
+
+        try {
+            TransferEventPayload payload = new TransferEventPayload(transaction.getTransactionId(), transaction.getAmount(), senderWalletId, receiverWalletId);
+
+            String json = objectMapper.writeValueAsString(payload);
+            outboxEventRepository.save(new OutboxEvent(UUID.randomUUID(),transaction.getTransactionId(), json));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to record outbound event", e);
+        }
+
+        // Evict BOTH wallets' cached balances, but only AFTER commit (see BalanceCache).
+        // Matters more here than in TransferExecutor: this attempt can still fail the
+        // version check at commit, and an early evict would repopulate the cache from a
+        // transfer that never happened.
+        balanceCache.evictAfterCommit(senderWalletId, receiverWalletId);
 
         return new TransferResponse(
                 transaction.getTransactionId(),

@@ -42,9 +42,11 @@ class LedgerReconciliationTest {
         // ---- STEP 1: SEED ~5 wallets, funded so ledger AND balance agree ----
         List<Wallet> wallets = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
-            User user=userService.register("user"+i+"@test.com", "password123");
+            // Unique email per run: registration is not idempotent, and a fixed address
+            // makes the test pass once and then fail on every later run.
+            User user=userService.register("user"+i+"-"+UUID.randomUUID()+"@test.com", "password123");
             Wallet w = walletRepository.findByUserId(user.getId()).orElseThrow();                    // your existing wallet-creation path
-            walletService.topUp(w.getId(), new BigDecimal("1000.00"));  // Day 5 path: writes CREDIT ledger entry + updates balance
+            walletService.topUp(user.getId(), new BigDecimal("1000.00"));  // Day 5 path: writes CREDIT ledger entry + updates balance
             wallets.add(walletRepository.findById(w.getId()).orElseThrow());
         }
 

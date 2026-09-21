@@ -20,11 +20,13 @@ public class TransferExecutor {
     private final WalletRepository walletRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final TransactionRepository transactionRepository;
+    private final BalanceCache balanceCache;
 
-    public TransferExecutor(WalletRepository walletRepository, LedgerEntryRepository ledgerEntryRepository, TransactionRepository transactionRepository) {
+    public TransferExecutor(WalletRepository walletRepository, LedgerEntryRepository ledgerEntryRepository, TransactionRepository transactionRepository, BalanceCache balanceCache) {
         this.walletRepository = walletRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.transactionRepository = transactionRepository;
+        this.balanceCache = balanceCache;
     }
 
 
@@ -95,6 +97,8 @@ public class TransferExecutor {
         // STEP 5: mark COMPLETED
         transaction.markCompleted();           // dirty-checked, flushes at commit
 
+        // Evict BOTH wallets' cached balances, but only AFTER commit (see BalanceCache).
+        balanceCache.evictAfterCommit(senderWalletId, receiverWalletId);
 
         return new TransferResponse(
                 transaction.getTransactionId(),
