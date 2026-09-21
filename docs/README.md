@@ -34,12 +34,18 @@ If you are new to the project, read the chapters in this order. Each one assumes
 | 17 | [Known Issues & Improvement Roadmap](17-known-issues-and-roadmap.md) | Verified bugs and gaps, ranked, with fixes |
 | 18 | [File-by-File Index](18-file-index.md) | Every source file in one table, with a one-line purpose and chapter link |
 | 19 | [Glossary](19-glossary.md) | Every term used in this guide (TOCTOU, outbox, idempotency, ...) |
+| 20 | [Interview Q&A](20-interview-qa.md) | 89 likely questions with model answers, follow-ups and code pointers |
+| 21 | [Scaling & System Design](21-scaling-and-system-design.md) | Capacity estimates, N instances, Postgres/Redis/Kafka at scale, hot wallets, sharding |
+
+Chapters 04, 08 and 12 end with a **Fundamentals** section that goes one level below the code: the security filter chain, refresh
+tokens and JWT attacks (04); isolation levels, MVCC and how `FOR UPDATE` works (08); Kafka partitions, acks, consumer groups and
+delivery semantics (12).
 
 ## Quick paths
 
 - **"I just want to run it"**: [02](02-setup-configuration-running.md), then [15](15-api-reference.md).
 - **"Explain the money-safety design"**: [06](06-ledger-and-reconciliation.md), [08](08-concurrency-and-locking.md), [09](09-idempotency.md).
-- **"Prepare me for an interview about this project"**: [01](01-overview-and-architecture.md), [07](07-transfers.md), [08](08-concurrency-and-locking.md), [10](10-rate-limiting.md), [12](12-events-outbox-kafka.md), [17](17-known-issues-and-roadmap.md).
+- **"Prepare me for an interview about this project"**: read [01](01-overview-and-architecture.md), [07](07-transfers.md), [08](08-concurrency-and-locking.md), [09](09-idempotency.md), [10](10-rate-limiting.md), [12](12-events-outbox-kafka.md), [17](17-known-issues-and-roadmap.md). Then drill [20](20-interview-qa.md) out loud, and finish with [21](21-scaling-and-system-design.md) §21.11.
 - **"Where is X in the code?"**: [18](18-file-index.md).
 
 ## Other documents in the repo

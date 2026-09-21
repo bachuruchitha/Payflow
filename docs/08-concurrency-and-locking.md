@@ -144,3 +144,68 @@ pessimistic, and I measured it: 9 of 10 rounds faster, with zero spurious confli
 completion). They differ only in how they load the wallets. The cost has already shown up: the outbox write exists only in the
 optimistic executor. The revisit trigger in `DECISIONS.md` ("one strategy is chosen for production, or the shared steps change for the
 first time") has now fired. See chapter 17 for the refactor.
+
+---
+
+## 8.8 Fundamentals: going deeper (interview follow-ups)
+
+### Transaction isolation levels
+The SQL standard defines four levels by which anomalies they prevent:
+
+| Level | Dirty read | Non-repeatable read | Phantom | Postgres notes |
+|---|---|---|---|---|
+| READ UNCOMMITTED | possible | possible | possible | Postgres treats it as READ COMMITTED |
+| **READ COMMITTED** (Postgres default, used by PayFlow) | ✗ | possible | possible | Each **statement** sees a fresh snapshot of committed data |
+| REPEATABLE READ | ✗ | ✗ | ✗ in Postgres | The whole **transaction** sees one snapshot. A concurrent update of the same row → error `40001` |
+| SERIALIZABLE | ✗ | ✗ | ✗ | SSI: the result must equal *some* serial order, otherwise abort with `40001` |
+
+**The lost update** (PayFlow's core problem) isn't prevented by READ COMMITTED. PayFlow keeps READ COMMITTED and adds an
+**explicit** guard on the one row that matters (`FOR UPDATE` or `@Version`), instead of paying for stricter isolation everywhere.
+
+### MVCC: how Postgres lets readers and writers coexist
+- Every UPDATE writes a **new version** of the row. The old version stays until no transaction needs it (then `VACUUM` removes it).
+- Each row version carries `xmin` (the creating transaction) and `xmax` (the deleting/locking transaction).
+- A reader uses a **snapshot** ("which transactions had committed when I started?") and picks the version visible to it.
+- Result: **plain SELECTs never block and are never blocked** by writers. Only writers (UPDATE/DELETE/`FOR UPDATE`) wait for each other
+  on the same row.
+
+### What `SELECT … FOR UPDATE` actually does
+1. It finds the row and marks it locked by your transaction (in the row's header, `xmax` + lock bits; no separate lock table per row).
+2. Another transaction trying to UPDATE or `FOR UPDATE` the same row finds it locked and **waits for your transaction to finish**.
+3. When you commit, the waiter wakes up. Under READ COMMITTED, Postgres **re-reads the latest committed version** of that row and
+   re-checks the WHERE clause before locking it.
+
+Step 3 is exactly why the next transfer sees the post-transfer balance.
+
+Lock modes, weakest to strongest: `FOR KEY SHARE` < `FOR SHARE` < `FOR NO KEY UPDATE` < `FOR UPDATE`. A plain `UPDATE` that doesn't
+change key columns takes `FOR NO KEY UPDATE`. Useful knobs: `NOWAIT` (fail immediately if locked), `SKIP LOCKED` (skip locked rows,
+ideal for job queues like the outbox), and `SET lock_timeout = '2s'`.
+
+### How Hibernate implements `@Version`
+- On load, it remembers the version (e.g. 7).
+- At flush: `UPDATE wallets SET balance=?, version=8 WHERE id=? AND version=7`.
+- It checks the JDBC update count. If it's 0, it throws `StaleObjectStateException` / `OptimisticLockException`, which Spring
+  translates into `ObjectOptimisticLockingFailureException`.
+- Flush order within a transaction: INSERTs before UPDATEs before DELETEs. Updates of different entities follow persistence-context
+  order (the order they were loaded), unless `hibernate.order_updates=true` sorts them by id. That's what the optimistic executor's
+  id-ordered loading relies on.
+
+### The atomic conditional update (lock-free pattern)
+```sql
+UPDATE wallets SET balance = balance - :amount, version = version + 1
+WHERE id = :senderId AND balance >= :amount;       -- 1 row = success, 0 rows = insufficient funds
+```
+The check and the write happen in **one statement**. Postgres serialises concurrent updates on the row, and each re-evaluates
+`balance >= :amount` on the latest version. It's the fastest correct option for a hot row. You still need the receiver update and
+ledger rows in the same transaction, touched in id order.
+
+### Deadlock detection
+Postgres checks for wait cycles after `deadlock_timeout` (default 1 s) and aborts one victim with SQLSTATE `40P01`. Lock ordering
+(PayFlow's approach) prevents cycles. Detection is only the safety net.
+
+### Common interview traps
+- *"Just use `synchronized` in Java."* It only works in one JVM. With two instances, both enter at once. The lock must live in the
+  **database** (or a distributed lock, which adds a new failure mode).
+- *"Optimistic locking means no locks at all."* The final UPDATE still takes a row lock briefly. It just doesn't hold one while
+  the application thinks.
+- *"Retry forever."* No. Bounded attempts plus jitter, then fail fast (`TransferConflictException`).
