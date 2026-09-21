@@ -54,31 +54,31 @@ Most of the engineering effort went into **correctness of money movement**, not 
 
 ```mermaid
 flowchart LR
-    Client([HTTP client / Swagger UI])
+    Client(["HTTP client / Swagger UI"])
 
-    subgraph App["PayFlow (Spring Boot, one JVM)"]
+    subgraph App["PayFlow - Spring Boot, one JVM"]
         direction TB
-        F[JwtAuthenticationFilter] --> C[Controllers]
-        C --> S[Services]
-        S --> R[Repositories JPA]
-        S --> RL[RateLimiter]
-        S --> BC[BalanceCache]
-        OP[OutboxPublisher<br/>@Scheduled every 5s]
-        TC[TransactionEventConsumer<br/>@KafkaListener]
+        F["JwtAuthenticationFilter"] --> C["Controllers"]
+        C --> S["Services"]
+        S --> R["Repositories - JPA"]
+        S --> RL["RateLimiter"]
+        S --> BC["BalanceCache"]
+        OP["OutboxPublisher<br/>scheduled every 5s"]
+        TC["TransactionEventConsumer<br/>Kafka listener"]
     end
 
-    PG[(PostgreSQL 16<br/>users, wallets, transactions,<br/>ledger_entries, outbox_events,<br/>processed_events, notifications)]
-    RD[(Redis 7.4<br/>rate_limit:transfer:*<br/>wallet:balance:*)]
-    KF[[Kafka 3.8<br/>topic: transaction-events]]
+    PG[("PostgreSQL 16<br/>users, wallets, transactions,<br/>ledger_entries, outbox_events,<br/>processed_events, notifications")]
+    RD[("Redis 7.4<br/>rate_limit keys<br/>wallet balance keys")]
+    KF[["Kafka 3.8<br/>topic transaction-events"]]
 
-    Client -->|REST + Bearer JWT| F
+    Client -->|"REST + Bearer JWT"| F
     R --> PG
-    RL -->|EVALSHA token_bucket.lua| RD
+    RL -->|"EVALSHA token_bucket.lua"| RD
     BC --> RD
-    OP -->|reads unpublished rows| PG
-    OP -->|send| KF
-    KF -->|consume, group notification-service| TC
-    TC -->|notifications + processed_events| PG
+    OP -->|"reads unpublished rows"| PG
+    OP -->|"send"| KF
+    KF -->|"consume, group notification-service"| TC
+    TC -->|"notifications + processed_events"| PG
 ```
 
 Everything runs in **one Spring Boot process**. The Kafka producer (`OutboxPublisher`) and consumer
@@ -130,33 +130,33 @@ sequenceDiagram
     participant JF as JwtAuthenticationFilter
     participant SC as Spring Security
     participant TC as TransferController
-    participant RL as RateLimiter (Redis)
+    participant RL as RateLimiter - Redis
     participant TS as TransferService
     participant OS as OptimisticTransferService
     participant OE as OptimisticTransferExecutor
     participant DB as PostgreSQL
 
-    Cl->>JF: POST /api/transfers<br/>Authorization: Bearer <jwt><br/>Idempotency-Key: k1
-    JF->>JF: validate signature + expiry, extract userId
-    JF->>SC: SecurityContext.setAuthentication(userId)
-    SC->>TC: authorized → dispatch
-    TC->>RL: check(userId)
-    RL-->>TC: allowed / 429
-    TC->>TS: transferOptimistic(k1, userId, toWallet, amount)
-    TS->>DB: findByIdempotencyKey(k1)
+    Cl->>JF: POST /api/transfers with Bearer JWT and Idempotency-Key k1
+    JF->>JF: validate signature and expiry, extract userId
+    JF->>SC: set authentication with principal userId
+    SC->>TC: authorized, dispatch
+    TC->>RL: check userId
+    RL-->>TC: allowed, or 429
+    TC->>TS: transferOptimistic with k1, userId, toWallet, amount
+    TS->>DB: findByIdempotencyKey k1
     alt key already used
         TS-->>TC: replay stored result
     else new key
-        TS->>OS: transfer(...)
+        TS->>OS: transfer
         loop up to 3 attempts
-            OS->>OE: executeTransfer (new DB transaction)
-            OE->>DB: read wallets, insert txn + ledger + outbox, update balances
-            DB-->>OE: commit (or version conflict → retry)
+            OS->>OE: executeTransfer in a new DB transaction
+            OE->>DB: read wallets, insert txn, ledger and outbox, update balances
+            DB-->>OE: commit, or version conflict then retry
         end
         OS-->>TS: TransferResponse
     end
     TS-->>TC: TransferResponse
-    TC-->>Cl: 200 OK {transactionId, status, amount}
+    TC-->>Cl: 200 OK with transactionId, status, amount
 ```
 
 Things that happen around every request:
@@ -173,9 +173,9 @@ Things that happen around every request:
 erDiagram
     USERS ||--|| WALLETS : "owns exactly one"
     WALLETS ||--o{ LEDGER_ENTRIES : "has entries"
-    WALLETS ||--o{ TRANSACTIONS : "sends (from_wallet_id)"
-    WALLETS ||--o{ TRANSACTIONS : "receives (to_wallet_id)"
-    TRANSACTIONS ||--|{ LEDGER_ENTRIES : "produces DEBIT + CREDIT"
+    WALLETS ||--o{ TRANSACTIONS : "sends via from_wallet_id"
+    WALLETS ||--o{ TRANSACTIONS : "receives via to_wallet_id"
+    TRANSACTIONS ||--|{ LEDGER_ENTRIES : "produces DEBIT and CREDIT"
     TRANSACTIONS ||--o| OUTBOX_EVENTS : "announced by"
     TRANSACTIONS ||--o| PROCESSED_EVENTS : "consumed once"
     TRANSACTIONS ||--o| NOTIFICATIONS : "notified by"

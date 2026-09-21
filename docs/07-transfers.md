@@ -35,9 +35,9 @@ Four classes sit between HTTP and the database. Each has one job:
 ```mermaid
 flowchart TD
     A["TransferController.transfer<br/>① rate limit ② delegate"] --> B["TransferService.transferOptimistic<br/>③ idempotency (outside retries)"]
-    B --> C["OptimisticTransferService.transfer<br/>④ retry loop, NOT @Transactional"]
-    C -->|"each attempt = new transaction"| D["OptimisticTransferExecutor.executeTransfer<br/>⑤ @Transactional: one attempt"]
-    B -.->|"transfer() — pessimistic path,<br/>used by tests, not by the controller"| E["TransferExecutor.executeTransfer<br/>@Transactional: SELECT … FOR UPDATE"]
+    B --> C["OptimisticTransferService.transfer<br/>④ retry loop, NOT transactional"]
+    C -->|"each attempt = new transaction"| D["OptimisticTransferExecutor.executeTransfer<br/>⑤ transactional, one attempt"]
+    B -.->|"transfer - pessimistic path,<br/>used by tests, not by the controller"| E["TransferExecutor.executeTransfer<br/>transactional, SELECT FOR UPDATE"]
 ```
 
 > **Which path is live?** In the **uncommitted** working tree, the controller calls `transferOptimistic` (see the comment at

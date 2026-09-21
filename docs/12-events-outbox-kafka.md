@@ -31,7 +31,7 @@ Write the event **into the same database, in the same transaction** as the trans
 sequenceDiagram
     participant EX as OptimisticTransferExecutor
     participant DB as PostgreSQL
-    participant PUB as OutboxPublisher (@Scheduled 5s)
+    participant PUB as OutboxPublisher - every 5s
     participant K as Kafka topic transaction-events
     participant CON as TransactionEventConsumer
 
@@ -169,3 +169,58 @@ select * from notifications order by created_at desc limit 5;
 
 Stop Kafka (`docker stop payflow-kafka`), make a transfer, and it still succeeds; its outbox row stays `false`. Start Kafka again and
 within about 5 s it's published and a notification appears. That's the outbox pattern working.
+
+---
+
+## 12.8 Fundamentals: Kafka internals (interview follow-ups)
+
+### Core vocabulary
+| Term | Meaning |
+|---|---|
+| **Topic** | A named, append-only log of messages (`transaction-events`) |
+| **Partition** | A topic is split into partitions. Each is an ordered log on one broker. **Ordering is guaranteed only within a partition** |
+| **Offset** | A message's position in a partition. Consumers track "how far I've read" as an offset |
+| **Key** | Decides the partition (`hash(key) % partitions`). The same key always goes to the same partition, so it's ordered. PayFlow keys by `transactionId` |
+| **Broker** | A Kafka server. A cluster has several |
+| **Replication factor** | Copies of each partition across brokers. One is the **leader** (serves reads and writes); the others are followers |
+| **ISR** | In-sync replicas: followers that are caught up with the leader |
+| **Retention** | Messages are kept for a time or size limit whether or not they were consumed, so they can be **replayed** |
+
+### Producer durability: `acks`
+- `acks=0`: fire and forget (can lose data).
+- `acks=1`: the leader wrote it (lost if the leader dies before followers copy it).
+- `acks=all`: every in-sync replica has it. Combined with `min.insync.replicas=2`, a write survives losing a broker.
+  (Kafka 3.x clients default to `acks=all` and `enable.idempotence=true`.)
+- **Idempotent producer:** the broker deduplicates the *producer's own* retries using sequence numbers. This is **not** the same as
+  PayFlow's consumer-side dedup, which handles re-sends by the outbox publisher and redeliveries.
+
+### Consumer groups and rebalancing
+- Consumers with the same `groupId` (`notification-service`) **share** the partitions. Each partition is read by exactly one consumer in
+  the group. Extra consumers beyond the partition count sit idle.
+- Different groups each get **all** messages (that's how a fraud service and a notification service would both consume).
+- When a consumer joins, leaves or crashes, the group **rebalances** (partitions are reassigned). Messages processed but not yet
+  committed get **re-delivered** to the new owner, which is one more reason consumers must be idempotent.
+
+### Offset commits and delivery semantics
+| Semantics | How | Risk |
+|---|---|---|
+| At-most-once | Commit offset **before** processing | Crash after commit = message lost |
+| **At-least-once** (PayFlow) | Commit **after** processing | Crash before commit = reprocessed, so dedup is needed |
+| Exactly-once | Kafka transactions (read-process-write *within Kafka*) | Only covers Kafka-to-Kafka; a DB side effect still needs idempotency |
+
+PayFlow's approach, at-least-once plus an idempotent consumer writing its dedup marker in the same DB transaction as its effect, is the
+standard way to get exactly-once **effects** with an external database.
+
+### Outbox variations
+| Variant | How it relays | Pros / cons |
+|---|---|---|
+| **Polling publisher** (PayFlow) | `@Scheduled` query for unpublished rows | Simple; adds latency (≤ 5 s) and DB load; needs `SKIP LOCKED` for multiple instances |
+| **CDC / log tailing** (Debezium) | Reads the Postgres WAL and emits inserts on the outbox table | Low latency, no polling load, preserves commit order; extra infrastructure |
+| **Listen/Notify** | Postgres `NOTIFY` wakes the publisher | Lower latency than polling; notifications are not durable, so you still need polling as a fallback |
+
+### Related patterns worth naming
+- **Inbox pattern:** the consumer-side twin of the outbox. PayFlow's `processed_events` is a minimal inbox.
+- **Saga:** a sequence of local transactions coordinated by events, with compensating actions on failure. Needed for cross-shard or
+  cross-service transfers (chapter 21).
+- **Event sourcing:** store the events themselves as the source of truth and derive state from them. PayFlow's append-only ledger is
+  close in spirit, but the stored balance remains authoritative.

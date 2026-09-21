@@ -24,17 +24,17 @@ sequenceDiagram
     participant F as JwtAuthenticationFilter
     participant API as Protected endpoint
 
-    C->>UC: POST /api/users/register {email, password}
+    C->>UC: POST /api/users/register with email, password
     UC->>US: register()
-    US-->>C: {id, email}  (user + USD wallet created)
+    US-->>C: id, email - user and USD wallet created
 
-    C->>AC: POST /api/auth/login {email, password}
+    C->>AC: POST /api/auth/login with email, password
     AC->>AS: login()
     AS->>AS: findByEmail + BCrypt.matches
     AS->>J: generateToken(userId)
-    J-->>C: {jwtToken}
+    J-->>C: jwtToken
 
-    C->>F: GET /api/wallets/me  Authorization: Bearer <jwt>
+    C->>F: GET /api/wallets/me with Bearer JWT
     F->>J: validateAndExtractUserId(token)
     J-->>F: userId
     F->>API: SecurityContext principal = userId
@@ -186,3 +186,61 @@ the token on every call.
 | Deny-by-default authorization | No roles, no refresh tokens, no revocation |
 | Sender always comes from the token, never the body | No password policy; email uniqueness is case-sensitive |
 | Stateless, CSRF correctly disabled for a header-auth API | Login and register are not rate-limited (only transfers are) |
+
+---
+
+## 4.9 Fundamentals: going deeper (interview follow-ups)
+
+### Anatomy of the security filter chain
+Spring Security is a chain of servlet filters that runs **before** your controllers (and before `@ControllerAdvice` can see anything).
+Simplified order for a PayFlow request:
+
+1. `SecurityContextHolderFilter`: sets up an empty security context for this request (thread-local).
+2. **`JwtAuthenticationFilter`** (ours): fills the context if the token is valid.
+3. `ExceptionTranslationFilter`: catches access-denied errors and calls the *authentication entry point* (the default here writes 403).
+4. `AuthorizationFilter`: applies `permitAll` / `authenticated()` rules.
+5. → `DispatcherServlet` → controller.
+
+Because security errors happen in filters, they never reach `GlobalExceptionHandler`. That's why a bad token gives an empty 403, not an
+`ErrorResponse` JSON.
+
+### The SecurityContext is thread-local
+The authentication is stored per thread for the duration of the request and cleared afterwards. Consequence: if you start your own
+thread or `@Async` task, the principal isn't there unless you propagate it.
+
+### Access token + refresh token (the standard production design)
+| Token | Lifetime | Stored | Purpose |
+|---|---|---|---|
+| Access token (JWT) | 5–15 min | Client memory | Sent on every request; verified statelessly |
+| Refresh token | Days/weeks | Server-side (DB/Redis) + client (HttpOnly cookie) | Exchanged for a new access token; **revocable**; rotated on each use |
+
+Short access tokens limit the damage of a stolen token. The server-side refresh token gives you logout and revocation without a DB hit
+on every request. PayFlow currently has only a 1-hour access token.
+
+### Revocation strategies
+- **Denylist** revoked token ids (`jti` claim) in Redis with TTL = remaining token life.
+- **Token version:** store `tokenVersion` per user, embed it in the JWT, and bump it on logout or password change. Every request
+  compares them (one lookup, which can be cached).
+- **Short expiry + refresh** (above), which is the usual answer.
+
+### HS256 vs RS256 / ES256
+- **HS256** (what PayFlow uses): one shared secret signs *and* verifies. Anyone who can verify can also forge. Fine for one service.
+- **RS256/ES256:** a private key signs, a public key verifies. Other microservices verify without being able to mint tokens. Keys are
+  published via a **JWKS** endpoint, and rotation works by key id (`kid`).
+
+### Where should a browser store the token?
+- **HttpOnly, Secure, SameSite cookie:** JavaScript can't read it (XSS-resistant), but the browser sends it automatically, so you
+  need CSRF protection again.
+- **Memory / localStorage:** no CSRF risk, but readable by any XSS script.
+
+For a pure API used by mobile apps (PayFlow's shape), the `Authorization` header is standard.
+
+### Password storage hierarchy
+Plain text ❌ → fast hash (MD5/SHA-256) ❌ (GPUs try billions per second) → **slow, salted, adaptive hash**: BCrypt ✅, scrypt ✅,
+**Argon2id** ✅ (the current OWASP first choice). Spring's `DelegatingPasswordEncoder` stores the algorithm id with the hash
+(`{bcrypt}$2a$…`), so you can migrate algorithms gradually.
+
+### Common JWT attacks to mention
+- **`alg: none`**: a token claims to be unsigned. JJWT's `verifyWith(key)` rejects it.
+- **Algorithm confusion:** an RS256 public key is used as an HS256 secret. Avoided by fixing the expected key type/algorithm.
+- **Weak secret:** a brute-forceable HMAC key. JJWT enforces a minimum key length, but a **leaked** key (like a committed default) defeats everything.

@@ -1,9 +1,6 @@
 package com.payflow.payflow.controller;
 
 
-// imports: RegisterRequest, RegisterResponse, UserService,
-//          the three annotations, and whatever User type register() returns
-
 import com.payflow.payflow.dto.RegisterRequest;
 import com.payflow.payflow.dto.RegisterResponse;
 import com.payflow.payflow.entity.User;
